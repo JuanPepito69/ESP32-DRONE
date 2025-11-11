@@ -8,7 +8,7 @@ ser.reset_input_buffer()
 
 throttle = yaw = pitch = roll = 0
 armed = False
-DEADZONE = 15
+DEADZONE = 5
 
 def apply_deadzone(value, threshold=DEADZONE):
     if abs(value) < threshold:
@@ -40,11 +40,11 @@ try:
                 roll = apply_deadzone(int(event.state / 257))
             elif event.code == 'BTN_SOUTH' and event.state == 1:
                 armed = True
-                print("✓ ARMED")
+                print("ARMED")
             elif event.code == 'BTN_EAST' and event.state == 1:
                 armed = False
                 throttle = 0  # Sécurité
-                print("✗ DISARMED")
+                print("DISARMED")
         
         arm_val = 1 if armed else 0
         data = f"{throttle},{yaw},{pitch},{roll},{arm_val}\n"
