@@ -14,8 +14,6 @@ Madgwick filter;
 
 RF24 radio(4, 5); // CE, CSN (ESP32-S3)
 const byte address[6] = "DRONE";
-static constexpr dshot_mode_t DSHOT_MODE = DSHOT300;
-static constexpr auto IS_BIDIRECTIONAL = false;
 
 struct Command {
   int16_t throttle;
@@ -28,19 +26,15 @@ struct Command {
 
 Servo esc[4];
 const int escPins[4] = {1, 2, 42, 41};
-DShotRMT motorCW1(escPins[1], DSHOT_MODE, IS_BIDIRECTIONAL);
-DShotRMT motorCCW1(escPins[2], DSHOT_MODE, IS_BIDIRECTIONAL);
-DShotRMT motorCW2(escPins[3], DSHOT_MODE, IS_BIDIRECTIONAL);
-DShotRMT motorCCW2(escPins[4], DSHOT_MODE, IS_BIDIRECTIONAL);
 
 float roll = 0;
 float pitch = 0;
 float yaw = 0;
 
 // Constantes moteurs
-const int THROTTLE_MIN = 50;  // Démarrage
-const int THROTTLE_ARM = 48;  // ARM
-const int THROTTLE_MAX = 2047;
+const int THROTTLE_MIN = 1020;  // Démarrage
+const int THROTTLE_ARM = 1000;  // ARM
+const int THROTTLE_MAX = 2000;
 
 float lastUpdate=0;
 unsigned long lastRX = 0;
@@ -74,10 +68,10 @@ void setup() {
   radio.startListening();
   
   // Init ESC
-  motorCCW1.begin();
-  motorCCW2.begin();
-  motorCW1.begin();
-  motorCW2.begin();
+  for(int i = 0; i < 4; i++) {
+    esc[i].attach(escPins[i], 1000, 2000);
+    esc[i].writeMicroseconds(THROTTLE_ARM);
+  }
   
   Serial.println("Drone prêt - Attente commandes...");
   delay(2000);
@@ -95,11 +89,10 @@ uint8_t calcChecksum(Command* c) {
 
 void failsafe() {
   armed = false;
-  motorCCW1.sendCommand(DSHOT_CMD_MOTOR_STOP);
-  motorCCW2.sendCommand(DSHOT_CMD_MOTOR_STOP);
-  motorCW1.sendCommand(DSHOT_CMD_MOTOR_STOP);
-  motorCW2.sendCommand(DSHOT_CMD_MOTOR_STOP);
-  Serial.println("FAILSAFE");
+  for(int i = 0; i < 4; i++) {
+    esc[i].writeMicroseconds(THROTTLE_ARM);
+  }
+  Serial.println("⚠ FAILSAFE !");
 }
 
 void mixAndApply(Command* c) {
@@ -143,16 +136,15 @@ void mixAndApply(Command* c) {
   
   // Apply
   if (armed && baseThrottle > THROTTLE_MIN) {
-    motorCCW1.sendThrottle(m1);
-    motorCCW2.sendThrottle(m2);
-    motorCW1.sendThrottle(m3);
-    motorCW2.sendThrottle(m4);
+    esc[0].writeMicroseconds(m1);
+    esc[1].writeMicroseconds(m2);
+    esc[2].writeMicroseconds(m3);
+    esc[3].writeMicroseconds(m4);
   } else {
-    // Désarmé = moteurs OFF
-    motorCCW1.sendCommand(DSHOT_CMD_MOTOR_STOP);
-    motorCCW2.sendCommand(DSHOT_CMD_MOTOR_STOP);
-    motorCW1.sendCommand(DSHOT_CMD_MOTOR_STOP);
-    motorCW2.sendCommand(DSHOT_CMD_MOTOR_STOP);
+    // Désarmé ou throttle bas = moteurs OFF
+    for(int i = 0; i < 4; i++) {
+      esc[i].writeMicroseconds(THROTTLE_ARM);
+    }
   }
 }
 
@@ -169,22 +161,22 @@ void loop() {
       // Gestion ARM/DISARM
       if (cmd.armed && !armed) {
         armed = true;
-        Serial.println("ARMED");
+        Serial.println("✓ ARMED");
       } else if (!cmd.armed && armed) {
         armed = false;
-        Serial.println("DISARMED");
+        Serial.println("✗ DISARMED");
       }
       
       // Appliquer commandes
       mixAndApply(&cmd);
       
     } else {
-      Serial.println("Checksum error");
+      Serial.println("✗ Checksum error");
     }
   }
   
   // Failsafe si pas de RX depuis 500ms
-  if (millis() - lastRX > 1000 && armed) {
+  if (millis() - lastRX > 5000 && armed) {
     failsafe();
   }
 }
