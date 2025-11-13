@@ -200,7 +200,7 @@ void mixAndApply(Command* c) {
   // Mixer basique (sans stabilisation pour l'instant)
   // Configuration quadcopter X:
   //     AVANT
-  //  3(CCW) 1(CW)
+  //  1(CW) 3(CCW)
   //     \ /
   //     / \
   //  4(CCW) 2(CW)
@@ -213,14 +213,14 @@ void mixAndApply(Command* c) {
   int pitchEffect = map(c->pitch, -127, 127, -100, 100);
   int rollEffect = map(c->roll, -127, 127, -100, 100);
 
-  // Moteur 1 (avant-droit, CW): -yaw for CW motors
-  int m1 = baseThrottle - rollEffect + pitchEffect - yawEffect;
+  // Moteur 1 (avant-gauche, CW): -yaw for CW motors
+  int m1 = baseThrottle + rollEffect + pitchEffect - yawEffect;
 
-  // Moteur 2 (arrière-droit, CW): -yaw for CW motors
+  // Moteur 2 (arrière-droite, CW): -yaw for CW motors
   int m2 = baseThrottle - rollEffect - pitchEffect - yawEffect;
 
-  // Moteur 3 (avant-gauche, CCW): +yaw for CCW motors
-  int m3 = baseThrottle + rollEffect + pitchEffect + yawEffect;
+  // Moteur 3 (avant-droite, CCW): +yaw for CCW motors
+  int m3 = baseThrottle - rollEffect + pitchEffect + yawEffect;
 
   // Moteur 4 (arrière-gauche, CCW): +yaw for CCW motors
   int m4 = baseThrottle + rollEffect - pitchEffect + yawEffect;
@@ -349,17 +349,17 @@ void PID_Gyro(float rateRollCmd, float ratePitchCmd, float rateYawCmd, int baseT
   // Motor mixing for X configuration
   // Configuration quadcopter X:
   //     AVANT
-  //  3(CCW) 1(CW)
+  //  1(CW) 3(CCW)
   //     \ /
   //     / \
   //  4(CCW) 2(CW)
 
-  // Motor 1 (avant-droit, CW): -yaw for CW motors
-  int m1 = baseThrottle - rollEffect + pitchEffect - yawEffect;
-  // Motor 2 (arrière-droit, CW): -yaw for CW motors
+  // Motor 1 (avant-gauche, CW): -yaw for CW motors
+  int m1 = baseThrottle + rollEffect + pitchEffect - yawEffect;
+  // Motor 2 (arrière-droite, CW): -yaw for CW motors
   int m2 = baseThrottle - rollEffect - pitchEffect - yawEffect;
-  // Motor 3 (avant-gauche, CCW): +yaw for CCW motors
-  int m3 = baseThrottle + rollEffect + pitchEffect + yawEffect;
+  // Motor 3 (avant-droite, CCW): +yaw for CCW motors
+  int m3 = baseThrottle - rollEffect + pitchEffect + yawEffect;
   // Motor 4 (arrière-gauche, CCW): +yaw for CCW motors
   int m4 = baseThrottle + rollEffect - pitchEffect + yawEffect;
 
