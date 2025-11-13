@@ -30,11 +30,32 @@ const int escPins[4] = {1, 2, 42, 41};
 float roll = 0;
 float pitch = 0;
 float yaw = 0;
+float altitude = 0;
+const float sens = 5; 
 
 // Constantes moteurs
 const int THROTTLE_MIN = 1020;  // Démarrage
 const int THROTTLE_ARM = 1000;  // ARM
 const int THROTTLE_MAX = 2000;
+
+// Constantes PID ---------------------------------
+
+// ROLL
+const float KpR = 1;
+const float KdR = 1;
+const float KiR = 1;
+
+// PITCH
+const float KpP = 1;
+const float KdP = 1;
+const float KiP = 1;
+
+// YAW
+const float KpY = 1;
+const float KdY = 1;
+const float KiY = 1;
+
+// ------------------------------------------------
 
 float lastUpdate=0;
 unsigned long lastRX = 0;
@@ -52,7 +73,7 @@ void setup() {
   icm.setGyroRateDivisor(0);   // Max rate
   filter.begin(1000); // 1000 Hz estimé
   
-  Serial.println("✓ Madgwick initialisé");
+  Serial.println("Madgwick initialisé");
   Serial.println("\nAttitude (degrés):");
   
   
@@ -68,6 +89,7 @@ void setup() {
   radio.startListening();
   
   // Init ESC
+
   for(int i = 0; i < 4; i++) {
     esc[i].attach(escPins[i], 1000, 2000);
     esc[i].writeMicroseconds(THROTTLE_ARM);
@@ -164,14 +186,14 @@ void loop() {
         Serial.println("✓ ARMED");
       } else if (!cmd.armed && armed) {
         armed = false;
-        Serial.println("✗ DISARMED");
+        Serial.println("DISARMED");
       }
       
       // Appliquer commandes
       mixAndApply(&cmd);
       
     } else {
-      Serial.println("✗ Checksum error");
+      Serial.println("Checksum error");
     }
   }
   
@@ -180,3 +202,59 @@ void loop() {
     failsafe();
   }
 }
+
+void PID_Gyro(Command *c,float dt) {
+  int baseThrottle = map(c->throttle, -127, 127, THROTTLE_ARM, THROTTLE_MAX);
+  baseThrottle = constrain(baseThrottle, THROTTLE_ARM, THROTTLE_MAX);
+  
+  // Configuration quadcopter X:
+  //     AVANT
+  //  3(CCW) 1(CW)
+  //     \ /
+  //     / \
+  //  2(CW) 4(CCW)
+  
+  // Yaw: rotation (-127 à 127)
+  // Pitch: avant/arrière (-127 à 127)
+  // Roll: gauche/droite (-127 à 127)
+
+  // Transfo de la commande a un % Trouver un moyen de ramener soit l'atitude du drone a quelque chose entre -1 et 1 ou Ces commandes a quelque chose de proche d'une vitesse angulaire
+  float CrYaw = mapf(c->yaw, -127, 127, -1, 1); // Yaw rate command
+  float CrPitch = mapf(c->pitch, -127, 127, -1, 1); // Pitch rate command
+  float CrRoll= mapf(c->roll, -127, 127, -1, 1); // Roll rate command
+
+  // recuperer l'info d'attitude du drone Gyro
+  Yaw = 
+  Pitch = 
+  Roll = 
+
+  // Calcul des erreurs
+  ErrYaw = CrYaw-Yaw;
+  ErrPitch = CrPitch-Pitch;
+  ErrRoll = CrRoll-Roll;
+
+  // Yaw
+  IErrYaw = IErrYaw + ErrYaw * dt// Ajouter l'erreur au terme / Vecteur integral
+  DErrYaw = DErrYaw + ErrYaw / dt// Ajouter l'erreur au terme / Vecteur Derivee
+  int yawEffect = KpY * ErrYaw + KiY * IErrYaw + KdY * DErrYaw;
+
+  // Roll
+  IErrRoll = IErrRoll + ErrRoll * dt// Ajouter l'erreur au terme / Vecteur integral
+  DErrRoll = DErrRoll + ErrRoll / dt// Ajouter l'erreur au terme / Vecteur Derivee
+  int rollEffect = KpR * ErrRoll + KiR * IErrRoll + KdR * DErrRoll;
+
+  // Pitch
+  IErrPitch = IErrPitch + ErrPitch * dt// Ajouter l'erreur au terme / Vecteur integral
+  DErrPitch = DErrPitch + ErrPitch / dt// Ajouter l'erreur au terme / Vecteur Derivee
+  int pitchEffect = KpP * ErrPitch + KiP * IErrPitch + KdP * DErrPitch;
+
+  // Fusion avec Throttle
+  // Moteur 1 (avant-droit, CW)
+  int m1 = baseThrottle - rollEffect + pitchEffect - yawEffect;
+  // Moteur 2 (arrière-gauche, CW)
+  int m2 = baseThrottle + rollEffect - pitchEffect - yawEffect;
+  // Moteur 3 (avant-gauche, CCW)
+  int m3 = baseThrottle + rollEffect + pitchEffect + yawEffect;
+  // Moteur 4 (arrière-droit, CCW)
+  int m4 = baseThrottle - rollEffect - pitchEffect + yawEffect;
+};
