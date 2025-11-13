@@ -44,16 +44,21 @@ const int THROTTLE_MAX = 2000;
 const float KpR = 1;
 const float KdR = 1;
 const float KiR = 1;
+float IErrRoll = [];
+float DErrRoll = [];
 
 // PITCH
 const float KpP = 1;
 const float KdP = 1;
 const float KiP = 1;
-
+float IErrPitch = [];
+float DErrPitch = [];
 // YAW
 const float KpY = 1;
 const float KdY = 1;
 const float KiY = 1;
+float IErrYaw= [];
+float DErrYaw= [];
 
 // ------------------------------------------------
 
