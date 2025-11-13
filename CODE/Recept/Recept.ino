@@ -200,10 +200,10 @@ void mixAndApply(Command* c) {
   // Mixer basique (sans stabilisation pour l'instant)
   // Configuration quadcopter X:
   //     AVANT
-  //  3(CW) 1(CCW)
+  //  3(CCW) 1(CW)
   //     \ /
   //     / \
-  //  2(CCW) 4(CW)
+  //  4(CCW) 2(CW)
 
   // Yaw: rotation (-127 à 127)
   // Pitch: avant/arrière (-127 à 127)
@@ -213,17 +213,17 @@ void mixAndApply(Command* c) {
   int pitchEffect = map(c->pitch, -127, 127, -100, 100);
   int rollEffect = map(c->roll, -127, 127, -100, 100);
 
-  // Moteur 1 (avant-droit, CCW): +yaw for CCW motors
-  int m1 = baseThrottle - rollEffect + pitchEffect + yawEffect;
+  // Moteur 1 (avant-droit, CW): -yaw for CW motors
+  int m1 = baseThrottle - rollEffect + pitchEffect - yawEffect;
 
-  // Moteur 2 (arrière-gauche, CCW): +yaw for CCW motors
-  int m2 = baseThrottle + rollEffect - pitchEffect + yawEffect;
+  // Moteur 2 (arrière-droit, CW): -yaw for CW motors
+  int m2 = baseThrottle - rollEffect - pitchEffect - yawEffect;
 
-  // Moteur 3 (avant-gauche, CW): -yaw for CW motors
-  int m3 = baseThrottle + rollEffect + pitchEffect - yawEffect;
+  // Moteur 3 (avant-gauche, CCW): +yaw for CCW motors
+  int m3 = baseThrottle + rollEffect + pitchEffect + yawEffect;
 
-  // Moteur 4 (arrière-droit, CW): -yaw for CW motors
-  int m4 = baseThrottle - rollEffect - pitchEffect - yawEffect;
+  // Moteur 4 (arrière-gauche, CCW): +yaw for CCW motors
+  int m4 = baseThrottle + rollEffect - pitchEffect + yawEffect;
   
   // Constrain
   m1 = constrain(m1, THROTTLE_ARM, THROTTLE_MAX);
@@ -349,19 +349,19 @@ void PID_Gyro(float rateRollCmd, float ratePitchCmd, float rateYawCmd, int baseT
   // Motor mixing for X configuration
   // Configuration quadcopter X:
   //     AVANT
-  //  3(CW) 1(CCW)
+  //  3(CCW) 1(CW)
   //     \ /
   //     / \
-  //  2(CCW) 4(CW)
+  //  4(CCW) 2(CW)
 
-  // Motor 1 (avant-droit, CCW): +yaw for CCW motors
-  int m1 = baseThrottle - rollEffect + pitchEffect + yawEffect;
-  // Motor 2 (arrière-gauche, CCW): +yaw for CCW motors
-  int m2 = baseThrottle + rollEffect - pitchEffect + yawEffect;
-  // Motor 3 (avant-gauche, CW): -yaw for CW motors
-  int m3 = baseThrottle + rollEffect + pitchEffect - yawEffect;
-  // Motor 4 (arrière-droit, CW): -yaw for CW motors
-  int m4 = baseThrottle - rollEffect - pitchEffect - yawEffect;
+  // Motor 1 (avant-droit, CW): -yaw for CW motors
+  int m1 = baseThrottle - rollEffect + pitchEffect - yawEffect;
+  // Motor 2 (arrière-droit, CW): -yaw for CW motors
+  int m2 = baseThrottle - rollEffect - pitchEffect - yawEffect;
+  // Motor 3 (avant-gauche, CCW): +yaw for CCW motors
+  int m3 = baseThrottle + rollEffect + pitchEffect + yawEffect;
+  // Motor 4 (arrière-gauche, CCW): +yaw for CCW motors
+  int m4 = baseThrottle + rollEffect - pitchEffect + yawEffect;
 
   // Constrain and apply
   m1 = constrain(m1, THROTTLE_ARM, THROTTLE_MAX);
