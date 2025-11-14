@@ -175,10 +175,13 @@ void loop() {
 
       float raterollcmd=0;
       float ratepitchcmd=0;
-      PID_Position(cmd.roll,cmd.pitch,&raterollcmd,&ratepitchcmd,dt);
-      PID_Gyro(raterollcmd,ratepitchcmd,cmd.yaw,cmd.throttle,dt);
-      
-      
+      float angleRollCmd = mapf(cmd.roll, -127, 127, -30, 30);  // ±30°
+      float anglePitchCmd = mapf(cmd.pitch, -127, 127, -30, 30);
+      float rateYawCmd = mapf(cmd.yaw, -127, 127, -180, 180);   // deg/s
+      int baseThrottle = map(cmd.throttle, -127, 127, THROTTLE_ARM, THROTTLE_MAX);
+
+      PID_Position(angleRollCmd,anglePitchCmd,&raterollcmd,&ratepitchcmd,dt);
+      PID_Gyro(raterollcmd,ratepitchcmd,rateYawCmd,baseThrottle,dt);
       
     } else {
       Serial.println("Checksum error");
@@ -189,13 +192,18 @@ void loop() {
   if (millis() - lastRX > 5000 && armed) {
     failsafe();
   }
-  dt=min(micros()-ti,1/100);
-
+  dt=(micros()-ti)/1000000.0;
+  dt = constrain(dt, 0.0001, 0.1);
+  
 }
 
 // PID POSITION CASCADE ETAPE 1
 void PID_Position(float angleRollCmd, float anglePitchCmd, float &rateRollOut, float &ratePitchOut, float dt) {
   // Erreurs : 
+
+  
+
+
   float errRoll_pos=angleRollCmd-angleRoll;
   float errPitch_pos=anglePitchCmd-anglePitch;
 
@@ -203,45 +211,47 @@ void PID_Position(float angleRollCmd, float anglePitchCmd, float &rateRollOut, f
   IErrRoll_pos+=errRoll_pos*dt;
   IErrRoll_pos=constrain_float(IErrRoll_pos,-I_LIMIT,I_LIMIT);
   DErrRoll_pos=(ErrRoll_pos-prevErrRoll_pos)/dt;
+  prevErrRoll_pos=errRoll_pos; 
 
   IErrPitch_pos+=errPitch_pos*dt;
   IErrPitch_pos=constrain_float(IErrPitch_pos,-I_LIMIT,I_LIMIT);
   DErrPitch_pos=(ErrPitch_pos-prevErrPitch_pos)/dt;
+  prevErrPitch_pos=ErrPitch_pos;
 
   rateRollOut=KpR_pos*errRoll_pos+IErrRoll_pos*KiR_pos+KdR_pos*DErrRoll_pos;
   rateRollOut=constrain_float(rateRollOut,-MAX_RATE_OUTPUT,+MAX_RATE_OUTPUT);
 
   ratePitchOut=KpP_pos*errPitch_pos+IErrPitch_pos*KiP_pos+KdP_pos*DErrPitch_pos;
   ratePitchOut=constrain_float(ratePitchOut,-MAX_RATE_OUTPUT,+MAX_RATE_OUTPUT);
-
-
 }
 
 
 void PID_Gyro(float rateRollCmd, float ratePitchCmd, float rateYawCmd, int baseThrottle, float dt) {
-
   // Calcul des erreurs
-  ErrYaw = rateYawCmd-gyroYaw;
-  ErrPitch = ratePitchCmd-gyroPitch;
-  ErrRoll = rateRollCmd-gyroRoll;
+  float ErrYaw = rateYawCmd-gyroYaw;
+  float ErrPitch = ratePitchCmd-gyroPitch;
+  float ErrRoll = rateRollCmd-gyroRoll;
   
   // Yaw
   IErrYaw += ErrYaw * dt// Ajouter l'erreur au terme / Vecteur integral
   IerrYaw=constrain_float(IErrYaw,-I_LIMIT,I_LIMIT);
   DErrYaw = (ErrYaw - prevErrYaw)/ dt// Ajouter l'erreur au terme / Vecteur Derivee
   int yawEffect = KpY * ErrYaw + KiY * IErrYaw + KdY * DErrYaw;
+  prevErrYaw=ErrYaw;
 
   // Roll
   IErrRoll += IErrRoll + ErrRoll * dt// Ajouter l'erreur au terme / Vecteur integral
   IerrRoll=constrain_float(IErrRoll,-I_LIMIT,I_LIMIT);
   DErrRoll = (ErrRoll - prevErrRoll)  / dt// Ajouter l'erreur au terme / Vecteur Derivee
   int rollEffect = KpR * ErrRoll + KiR * IErrRoll + KdR * DErrRoll;
+  prevErrRoll=errRoll; 
 
   // Pitch
-  IErrPitch = IErrPitch + ErrPitch * dt// Ajouter l'erreur au terme / Vecteur integral
+  IErrPitch = IErrPitch + ErrPitch * dt // Ajouter l'erreur au terme / Vecteur integral
   IErrPitch = constrain_float(IErrPitch,-I_LIMIT,I_LIMIT);
-  DErrPitch = (ErrPitch-prevErrPitch) / dt// Ajouter l'erreur au terme / Vecteur Derivee
+  DErrPitch = (ErrPitch-prevErrPitch) / dt  // Ajouter l'erreur au terme / Vecteur Derivee
   int pitchEffect = KpP * ErrPitch + KiP * IErrPitch + KdP * DErrPitch;
+  prevErrPitch=ErrPitch;
 
   // Fusion avec Throttle
   //  1(CW) 3(CCW)
@@ -281,10 +291,11 @@ void PID_Gyro(float rateRollCmd, float ratePitchCmd, float rateYawCmd, int baseT
 }
 
 void PID_Descente(float dt,float &cmdThrottle){
-
-
-
-  
+// PID POUR GERER LES GAZS SI LE DRONE EST EN FAILSAFE :
+// IL FAUT MESURE PRESSION ATMO AU DEMARRAGE DU DRONE POUR ESTIMER H0
+// ET SOIT COMMANDER THROTTLE EN FONCTION DE H0-H
+// SOIT CONTROLER LA VITESSE DE DESCENTE EN FAISANT UNE MESURE DE VITESSE DE DESCENTE AVEC H(T)-H(T-1) ET ASSERVIR CETTE VITESSE POUR AVOIR UN ATERISSAGE CONTROLE
+// CETTE CMD THROTTLE SERA ENSUITE ENVOYE A PID GYRO AVEC LES INFO CMDRATEGYRO=0 ET CE THROTTLE.
 
 }
 
