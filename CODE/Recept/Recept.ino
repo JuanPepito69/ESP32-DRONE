@@ -32,7 +32,7 @@ float pitch = 0;
 float yaw = 0;
 float altitude = 0;
 const float sens = 5; 
-
+float dt=0.001;
 // Constantes moteurs
 const int THROTTLE_MIN = 1020;  // Démarrage
 const int THROTTLE_ARM = 1000;  // ARM
@@ -152,61 +152,9 @@ void failsafe() {
   Serial.println("⚠ FAILSAFE !");
 }
 
-void mixAndApply(Command* c) {
-  // Conversion -127/127 → throttle PWM
-  int baseThrottle = map(c->throttle, -127, 127, THROTTLE_ARM, THROTTLE_MAX);
-  baseThrottle = constrain(baseThrottle, THROTTLE_ARM, THROTTLE_MAX);
-  
-  // Mixer basique (sans stabilisation pour l'instant)
-  // Configuration quadcopter X:
-  //     AVANT
-  //  3(CCW) 1(CW)
-  //     \ /
-  //     / \
-  //  2(CW) 4(CCW)
-  
-  // Yaw: rotation (-127 à 127)
-  // Pitch: avant/arrière (-127 à 127)
-  // Roll: gauche/droite (-127 à 127)
-  
-  int yawEffect = map(c->yaw, -127, 127, -100, 100);
-  int pitchEffect = map(c->pitch, -127, 127, -100, 100);
-  int rollEffect = map(c->roll, -127, 127, -100, 100);
-  
-  // Moteur 1 (avant-droit, CW)
-  int m1 = baseThrottle - rollEffect + pitchEffect - yawEffect;
-  
-  // Moteur 2 (arrière-gauche, CW)
-  int m2 = baseThrottle + rollEffect - pitchEffect - yawEffect;
-  
-  // Moteur 3 (avant-gauche, CCW)
-  int m3 = baseThrottle + rollEffect + pitchEffect + yawEffect;
-  
-  // Moteur 4 (arrière-droit, CCW)
-  int m4 = baseThrottle - rollEffect - pitchEffect + yawEffect;
-  
-  // Constrain
-  m1 = constrain(m1, THROTTLE_ARM, THROTTLE_MAX);
-  m2 = constrain(m2, THROTTLE_ARM, THROTTLE_MAX);
-  m3 = constrain(m3, THROTTLE_ARM, THROTTLE_MAX);
-  m4 = constrain(m4, THROTTLE_ARM, THROTTLE_MAX);
-  
-  // Apply
-  if (armed && baseThrottle > THROTTLE_MIN) {
-    esc[0].writeMicroseconds(m1);
-    esc[1].writeMicroseconds(m2);
-    esc[2].writeMicroseconds(m3);
-    esc[3].writeMicroseconds(m4);
-  } else {
-    // Désarmé ou throttle bas = moteurs OFF
-    for(int i = 0; i < 4; i++) {
-      esc[i].writeMicroseconds(THROTTLE_ARM);
-    }
-  }
-}
-
 void loop() {
-  // Réception commandes
+  float ti = micros()
+  updateIMU();
   if (radio.available()) {
     radio.read(&cmd, sizeof(cmd));
     
@@ -223,9 +171,14 @@ void loop() {
         armed = false;
         Serial.println("DISARMED");
       }
+      // PID CASCADE
+
+      float raterollcmd=0;
+      float ratepitchcmd=0;
+      PID_Position(cmd.roll,cmd.pitch,&raterollcmd,&ratepitchcmd,dt);
+      PID_Gyro(raterollcmd,ratepitchcmd,cmd.yaw,cmd.throttle,dt);
       
-      // Appliquer commandes
-      mixAndApply(&cmd);
+      
       
     } else {
       Serial.println("Checksum error");
@@ -236,6 +189,8 @@ void loop() {
   if (millis() - lastRX > 5000 && armed) {
     failsafe();
   }
+  dt=min(micros()-ti,1/100);
+
 }
 
 // PID POSITION CASCADE ETAPE 1
@@ -296,12 +251,16 @@ void PID_Gyro(float rateRollCmd, float ratePitchCmd, float rateYawCmd, int baseT
 
   // Motor 1 (avant-gauche, CW): -yaw for CW motors
   int m1 = baseThrottle + rollEffect + pitchEffect - yawEffect;
+  m1 = constrain(m1,THROTTLE_MIN,THROTTLE_MAX);
   // Motor 2 (arrière-droite, CW): -yaw for CW motors
   int m2 = baseThrottle - rollEffect - pitchEffect - yawEffect;
+  m2 = constrain(m2,THROTTLE_MIN,THROTTLE_MAX);
   // Motor 3 (avant-droite, CCW): +yaw for CCW motors
   int m3 = baseThrottle - rollEffect + pitchEffect + yawEffect;
+  m3=constrain(m3,THROTTLE_MIN,THROTTLE_MAX);
   // Motor 4 (arrière-gauche, CCW): +yaw for CCW motors
   int m4 = baseThrottle + rollEffect - pitchEffect + yawEffect;
+  m4=constrain(m4,THROTTLE_MIN,THROTTLE_MAX);
 
   if (armed && baseThrottle > THROTTLE_MIN) {
     esc[0].writeMicroseconds(m1);
@@ -318,6 +277,14 @@ void PID_Gyro(float rateRollCmd, float ratePitchCmd, float rateYawCmd, int baseT
     IErrPitch = 0;
     IErrYaw = 0;
   }
+
+}
+
+void PID_Descente(float dt,float &cmdThrottle){
+
+
+
+  
 
 }
 
