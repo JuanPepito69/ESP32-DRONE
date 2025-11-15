@@ -6,6 +6,10 @@
 #include <MadgwickAHRS.h>
 #include <Wire.h>
 
+float gyroOffsetX = 0, gyroOffsetY = 0, gyroOffsetZ = 0;
+float accelOffsetX = 0, accelOffsetY = 0, accelOffsetZ = 0;
+
+
 Adafruit_ICM20948 icm;
 Madgwick filter;
 
@@ -58,7 +62,7 @@ float prevErrPitch = 0;
 // YAW Rate
 const float KpY = 2.0;
 const float KiY = 0.5;
-const float KdY = 0.0;
+const float KdY = 2;
 float IErrYaw = 0;
 float prevErrYaw = 0;
 
@@ -69,14 +73,14 @@ const float I_LIMIT = 400.0;
 // ROLL Angle
 const float KpR_pos = 2.0;
 const float KiR_pos = 0.0;
-const float KdR_pos = 0.0;
+const float KdR_pos = 2;
 float IErrRoll_pos = 0;
 float prevErrRoll_pos = 0;
 
 // PITCH Angle
 const float KpP_pos = 2.0;
 const float KiP_pos = 0.0;
-const float KdP_pos = 0.0;
+const float KdP_pos = 2;
 float IErrPitch_pos = 0;
 float prevErrPitch_pos = 0;
 
@@ -96,6 +100,70 @@ float lastUpdate=0;
 unsigned long lastRX = 0;
 bool armed = false;
 
+void calibrateIMU() {
+  Serial.println("=== CALIBRATION IMU ===");
+  Serial.println("Poser drone sur surface PARFAITEMENT PLATE");
+  Serial.println("Ne pas toucher pendant 10 sec...");
+  delay(3000);
+  
+  // 1. CALIBRATION GYRO
+  float gSumX = 0, gSumY = 0, gSumZ = 0;
+  float aSumX = 0, aSumY = 0, aSumZ = 0;
+  const int samples = 1000;
+  
+  for(int i = 0; i < samples; i++) {
+    sensors_event_t a, g, m;
+    icm.getEvent(&a, &g, &m);
+    
+    // Accumule gyro
+    gSumX += g.gyro.x;
+    gSumY += g.gyro.y;
+    gSumZ += g.gyro.z;
+    
+    // Accumule accel
+    aSumX += a.acceleration.x;
+    aSumY += a.acceleration.y;
+    aSumZ += a.acceleration.z;
+    
+    delay(2);
+  }
+  
+  // Moyennes gyro
+  gyroOffsetX = gSumX / samples;
+  gyroOffsetY = gSumY / samples;
+  gyroOffsetZ = gSumZ / samples;
+  
+  // Moyennes accel (avec compensation gravité sur Z)
+  accelOffsetX = aSumX / samples;
+  accelOffsetY = aSumY / samples;
+  accelOffsetZ = (aSumZ / samples) - 9.81;  // Retirer 1G
+  
+  Serial.println("✓ Calibration terminée!");
+  Serial.print("Gyro offsets: ");
+  Serial.print(gyroOffsetX, 4); Serial.print(", ");
+  Serial.print(gyroOffsetY, 4); Serial.print(", ");
+  Serial.println(gyroOffsetZ, 4);
+  
+  Serial.print("Accel offsets: ");
+  Serial.print(accelOffsetX, 3); Serial.print(", ");
+  Serial.print(accelOffsetY, 3); Serial.print(", ");
+  Serial.println(accelOffsetZ, 3);
+  
+  // 2. VERIFICATION ANGLE INITIAL
+  delay(100);
+  updateIMU();
+  Serial.print("Angle initial Roll: ");
+  Serial.print(angleRoll);
+  Serial.print("° Pitch: ");
+  Serial.print(anglePitch);
+  Serial.println("°");
+  
+  if(abs(angleRoll) > 2 || abs(anglePitch) > 2) {
+    Serial.println("⚠️ ATTENTION: Surface pas plate ou IMU mal monté!");
+  }
+}
+
+
 void setup() {
   Serial.begin(115200);
   Wire.begin(SDA_PIN, SCL_PIN);
@@ -104,9 +172,22 @@ void setup() {
     Serial.println("ICM20948 non trouvé!");
     delay(50);
   }
-  icm.setAccelRateDivisor(0);  // Max rate
-  icm.setGyroRateDivisor(0);   // Max rate
-  filter.begin(1000); // 1000 Hz estimé
+  // 1. RANGES
+  icm.setAccelRange(ICM20948_ACCEL_RANGE_8_G);
+  icm.setGyroRange(ICM20948_GYRO_RANGE_1000_DPS);
+  
+  // 2. DATA RATES
+  icm.setAccelRateDivisor(0);
+  icm.setGyroRateDivisor(0);
+  
+  // 3. FILTRES DLPF avec les bonnes constantes
+  icm.enableAccelDLPF(true, ICM20X_ACCEL_FREQ_50_4_HZ);   // 50Hz
+  icm.enableGyrolDLPF(true, ICM20X_GYRO_FREQ_51_2_HZ);    // 51Hz
+  
+  // 4. Calibration
+  calibrateIMU();
+  
+  filter.begin(500);
   
   Serial.println("Madgwick initialisé");
   Serial.println("\nAttitude (degrés):");
@@ -153,8 +234,10 @@ void failsafe() {
 }
 
 void loop() {
-  float ti = micros()
+  float ti = micros();
   updateIMU();
+  debug();
+  dt=2.0/1000.0;
   if (radio.available()) {
     radio.read(&cmd, sizeof(cmd));
     
@@ -180,11 +263,12 @@ void loop() {
       float rateYawCmd = mapf(cmd.yaw, -127, 127, -180, 180);   // deg/s
       int baseThrottle = map(cmd.throttle, -127, 127, THROTTLE_ARM, THROTTLE_MAX);
 
-      PID_Position(angleRollCmd,anglePitchCmd,&raterollcmd,&ratepitchcmd,dt);
+      PID_Position(angleRollCmd,anglePitchCmd,raterollcmd,ratepitchcmd,dt);
       PID_Gyro(raterollcmd,ratepitchcmd,rateYawCmd,baseThrottle,dt);
       
     } else {
       Serial.println("Checksum error");
+      
     }
   }
   
@@ -192,8 +276,10 @@ void loop() {
   if (millis() - lastRX > 5000 && armed) {
     failsafe();
   }
-  dt=(micros()-ti)/1000000.0;
-  dt = constrain(dt, 0.0001, 0.1);
+  if((micros()-ti)/1000000.0<dt){
+    delayMicroseconds(dt*1000000.0-(micros()-ti));
+  }
+  Serial.println(1/((micros()-ti)/1000000.0));
   
 }
 
@@ -201,22 +287,19 @@ void loop() {
 void PID_Position(float angleRollCmd, float anglePitchCmd, float &rateRollOut, float &ratePitchOut, float dt) {
   // Erreurs : 
 
-  
-
-
   float errRoll_pos=angleRollCmd-angleRoll;
   float errPitch_pos=anglePitchCmd-anglePitch;
 
   // Termes Dérivée et Integrale
   IErrRoll_pos+=errRoll_pos*dt;
   IErrRoll_pos=constrain_float(IErrRoll_pos,-I_LIMIT,I_LIMIT);
-  DErrRoll_pos=(ErrRoll_pos-prevErrRoll_pos)/dt;
+  float DErrRoll_pos=(errRoll_pos-prevErrRoll_pos)/dt;
   prevErrRoll_pos=errRoll_pos; 
 
   IErrPitch_pos+=errPitch_pos*dt;
   IErrPitch_pos=constrain_float(IErrPitch_pos,-I_LIMIT,I_LIMIT);
-  DErrPitch_pos=(ErrPitch_pos-prevErrPitch_pos)/dt;
-  prevErrPitch_pos=ErrPitch_pos;
+  float DErrPitch_pos=(errPitch_pos-prevErrPitch_pos)/dt;
+  prevErrPitch_pos=errPitch_pos;
 
   rateRollOut=KpR_pos*errRoll_pos+IErrRoll_pos*KiR_pos+KdR_pos*DErrRoll_pos;
   rateRollOut=constrain_float(rateRollOut,-MAX_RATE_OUTPUT,+MAX_RATE_OUTPUT);
@@ -233,23 +316,23 @@ void PID_Gyro(float rateRollCmd, float ratePitchCmd, float rateYawCmd, int baseT
   float ErrRoll = rateRollCmd-gyroRoll;
   
   // Yaw
-  IErrYaw += ErrYaw * dt// Ajouter l'erreur au terme / Vecteur integral
-  IerrYaw=constrain_float(IErrYaw,-I_LIMIT,I_LIMIT);
-  DErrYaw = (ErrYaw - prevErrYaw)/ dt// Ajouter l'erreur au terme / Vecteur Derivee
+  IErrYaw += ErrYaw * dt;// Ajouter l'erreur au terme / Vecteur integral
+  IErrYaw=constrain_float(IErrYaw,-I_LIMIT,I_LIMIT);
+  float DErrYaw = (ErrYaw - prevErrYaw)/ dt;// Ajouter l'erreur au terme / Vecteur Derivee
   int yawEffect = KpY * ErrYaw + KiY * IErrYaw + KdY * DErrYaw;
   prevErrYaw=ErrYaw;
 
   // Roll
-  IErrRoll += IErrRoll + ErrRoll * dt// Ajouter l'erreur au terme / Vecteur integral
-  IerrRoll=constrain_float(IErrRoll,-I_LIMIT,I_LIMIT);
-  DErrRoll = (ErrRoll - prevErrRoll)  / dt// Ajouter l'erreur au terme / Vecteur Derivee
+  IErrRoll += ErrRoll * dt;// Ajouter l'erreur au terme / Vecteur integral
+  IErrRoll=constrain_float(IErrRoll,-I_LIMIT,I_LIMIT);
+  float DErrRoll = (ErrRoll - prevErrRoll)  / dt;// Ajouter l'erreur au terme / Vecteur Derivee
   int rollEffect = KpR * ErrRoll + KiR * IErrRoll + KdR * DErrRoll;
-  prevErrRoll=errRoll; 
+  prevErrRoll=ErrRoll; 
 
   // Pitch
-  IErrPitch = IErrPitch + ErrPitch * dt // Ajouter l'erreur au terme / Vecteur integral
+  IErrPitch = IErrPitch + ErrPitch * dt; // Ajouter l'erreur au terme / Vecteur integral
   IErrPitch = constrain_float(IErrPitch,-I_LIMIT,I_LIMIT);
-  DErrPitch = (ErrPitch-prevErrPitch) / dt  // Ajouter l'erreur au terme / Vecteur Derivee
+  float DErrPitch = (ErrPitch-prevErrPitch) / dt;  // Ajouter l'erreur au terme / Vecteur Derivee
   int pitchEffect = KpP * ErrPitch + KiP * IErrPitch + KdP * DErrPitch;
   prevErrPitch=ErrPitch;
 
@@ -302,19 +385,26 @@ void PID_Descente(float dt,float &cmdThrottle){
 void updateIMU() {
   sensors_event_t accel, gyro, mag;
   icm.getEvent(&accel, &gyro, &mag);
-
-  // Store gyro rates in deg/s (convert from rad/s)
-  gyroRoll = gyro.gyro.x * 57.2957795;   // rad/s to deg/s
-  gyroPitch = gyro.gyro.y * 57.2957795;
-  gyroYaw = gyro.gyro.z * 57.2957795;
-
-  // Update Madgwick filter with sensor data
-  filter.updateIMU(gyro.gyro.x, gyro.gyro.y, gyro.gyro.z,
-                   accel.acceleration.x, accel.acceleration.y, accel.acceleration.z);
-
-  // Get attitude angles from filter
-  angleRoll = filter.getRoll();
-  anglePitch = filter.getPitch();
+  
+  // Applique TOUS les offsets
+  float gx = gyro.gyro.x - gyroOffsetX;
+  float gy = gyro.gyro.y - gyroOffsetY;
+  float gz = gyro.gyro.z - gyroOffsetZ;
+  
+  float ax = accel.acceleration.x - accelOffsetX;
+  float ay = accel.acceleration.y - accelOffsetY;
+  float az = accel.acceleration.z - accelOffsetZ;
+  
+  // Convertir gyro en deg/s
+  gyroRoll = gx * 57.2958;
+  gyroPitch = gy * 57.2958;
+  gyroYaw = gz * 57.2958;
+  
+  // Update Madgwick avec données CORRIGÉES
+  filter.updateIMU(gx, gy, gz, ax, ay, az);
+  
+  angleRoll = filter.getPitch();
+  anglePitch = filter.getRoll();
 }
 
 // Fast float mapping (optimized for ESP32)
@@ -327,4 +417,13 @@ inline float constrain_float(float value, float min_val, float max_val) {
   if (value < min_val) return min_val;
   if (value > max_val) return max_val;
   return value;
+}
+
+void debug() {
+  Serial.print("Gyro: ");
+  Serial.print(gyroRoll); Serial.print(" ");
+  Serial.print(gyroPitch); Serial.print(" ");
+  Serial.print(gyroYaw); Serial.print(" | Angle: ");
+  Serial.print(angleRoll); Serial.print(" ");
+  Serial.println(anglePitch);
 }
