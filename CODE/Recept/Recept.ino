@@ -36,7 +36,7 @@ float pitch = 0;
 float yaw = 0;
 float altitude = 0;
 const float sens = 5; 
-float dt=0.001;
+float dt=2000;
 // Constantes moteurs
 const int THROTTLE_MIN = 1020;  // Démarrage
 const int THROTTLE_ARM = 1000;  // ARM
@@ -46,21 +46,21 @@ const int THROTTLE_MAX = 2000;
 
 // RATE PID (Gyro) - Inner loop
 // ROLL Rate
-const float KpR = 1.5;
+const float KpR = 0.2;
 const float KiR = 0.3;
-const float KdR = 0.05;
+const float KdR = 0.5;
 float IErrRoll = 0;
 float prevErrRoll = 0;
 
 // PITCH Rate
-const float KpP = 1.5;
+const float KpP = 0.2;
 const float KiP = 0.3;
-const float KdP = 0.05;
+const float KdP = 0.5;
 float IErrPitch = 0;
 float prevErrPitch = 0;
 
 // YAW Rate
-const float KpY = 2.0;
+const float KpY = 0.2;
 const float KiY = 0.5;
 const float KdY = 2;
 float IErrYaw = 0;
@@ -85,7 +85,7 @@ float IErrPitch_pos = 0;
 float prevErrPitch_pos = 0;
 
 // Max angular rate output from position PID (deg/s)
-const float MAX_RATE_OUTPUT = 200.0;
+const float MAX_RATE_OUTPUT = 100.0;
 
 // ------------------------------------------------
 
@@ -236,8 +236,8 @@ void failsafe() {
 void loop() {
   float ti = micros();
   updateIMU();
-  debug();
-  dt=2.0/1000.0;
+  //debug();
+ 
   if (radio.available()) {
     radio.read(&cmd, sizeof(cmd));
     
@@ -254,21 +254,21 @@ void loop() {
         armed = false;
         Serial.println("DISARMED");
       }
+
       // PID CASCADE
 
       float raterollcmd=0;
       float ratepitchcmd=0;
-      float angleRollCmd = mapf(cmd.roll, -127, 127, -30, 30);  // ±30°
-      float anglePitchCmd = mapf(cmd.pitch, -127, 127, -30, 30);
-      float rateYawCmd = mapf(cmd.yaw, -127, 127, -180, 180);   // deg/s
+      float angleRollCmd = mapf(cmd.roll, -127, 127, -10, 10);  // ±30°
+      float anglePitchCmd = mapf(cmd.pitch, -127, 127, -10, 10);
+      float rateYawCmd = mapf(cmd.yaw, -127, 127, -45, 45);   // deg/s
       int baseThrottle = map(cmd.throttle, -127, 127, THROTTLE_ARM, THROTTLE_MAX);
 
-      PID_Position(angleRollCmd,anglePitchCmd,raterollcmd,ratepitchcmd,dt);
-      PID_Gyro(raterollcmd,ratepitchcmd,rateYawCmd,baseThrottle,dt);
+      PID_Position(angleRollCmd,anglePitchCmd,raterollcmd,ratepitchcmd,dt/1000000.0);
+      PID_Gyro(raterollcmd,ratepitchcmd,rateYawCmd,baseThrottle,dt/1000000.0);
       
     } else {
       Serial.println("Checksum error");
-      
     }
   }
   
@@ -276,10 +276,10 @@ void loop() {
   if (millis() - lastRX > 5000 && armed) {
     failsafe();
   }
-  if((micros()-ti)/1000000.0<dt){
-    delayMicroseconds(dt*1000000.0-(micros()-ti));
+  if((micros()-ti)<dt){
+    delayMicroseconds(dt-(micros()-ti));
   }
-  Serial.println(1/((micros()-ti)/1000000.0));
+  //Serial.println(1/((micros()-ti)/1000000.0));
   
 }
 
